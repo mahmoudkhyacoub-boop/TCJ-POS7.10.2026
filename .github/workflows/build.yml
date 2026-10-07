@@ -1,0 +1,110 @@
+name: Build Trend Center Jordan POS V235 Accountant Balances CLIQ Card Manager
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows EXE V235 Accountant Balances CLIQ Card Manager
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Verify required files and Python syntax
+        shell: powershell
+        run: |
+          if (-not (Test-Path -LiteralPath 'main.py')) { throw 'main.py is missing' }
+          # PyInstaller requires ICO on Windows. Rebuild it from the bundled PNG
+          # when a checkout omitted the ICO file.
+          if (-not (Test-Path -LiteralPath 'icon.ico')) {
+            if (-not (Test-Path -LiteralPath 'icon.png')) { throw 'icon.ico and icon.png are both missing' }
+            python -c "from PIL import Image; Image.open('icon.png').convert('RGBA').save('icon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+            Write-Host 'icon.ico was regenerated from icon.png.'
+          }
+          if (-not (Test-Path -LiteralPath 'icon.png')) { throw 'icon.png is missing' }
+          # The complete login artwork is embedded in main.py; no external login image is required.
+          if (Test-Path -LiteralPath 'brand_logos') { Write-Host 'brand_logos found; branded login strip will be bundled.' } else { Write-Host 'brand_logos not found; application fallback labels will be used.' }
+          if (-not (Test-Path -LiteralPath 'requirements.txt')) { throw 'requirements.txt is missing' }
+          if (-not (Test-Path -LiteralPath 'cocon-next-arabic-regular.otf')) { throw 'attached Cocon OTF is missing' }
+          if (-not (Test-Path -LiteralPath 'Cocon-Next-Arabic-PDF.ttf')) { throw 'Cocon PDF TTF is missing' }
+          # nav_icons is optional; main.py uses a text fallback when icons are absent.
+          python -m py_compile main.py
+          $source = Get-Content -Raw -LiteralPath 'main.py'
+          if ($source -notmatch 'def ui_balance_reconciliation') { throw 'balance reconciliation method is missing' }
+          if ($source -notmatch 'def ui_financial_position') { throw 'financial-position method is missing' }
+          if ($source -notmatch 'financial_position_snapshots') { throw 'financial-position schema is missing' }
+          if ($source -notmatch 'balance_reconciliations') { throw 'balance reconciliation schema is missing' }
+          if ($source -notmatch 'opening_cash') { throw 'carried-forward balance fields are missing' }
+          if ($source -notmatch 'def _financial_cycle_for_date') { throw 'financial cycle calculator is missing' }
+          if ($source -notmatch 'def ui_service_register') { throw 'independent service register is missing' }
+          if ($source -notmatch 'service_register_orders') { throw 'service register schema is missing' }
+          if ($source -notmatch 'service_register_technicians') { throw 'technician register schema is missing' }
+          if ($source -notmatch 'financial_cycles') { throw 'financial cycle lock schema is missing' }
+          if ($source -notmatch 'customer_debts') { throw 'customer receivables integration is missing' }
+          if ($source -notmatch 'supplier_debts') { throw 'supplier payables integration is missing' }
+          if ($source -notmatch 'debt_payments') { throw 'debt payment integration is missing' }
+          if ($source -notmatch 'payment_source') { throw 'debt payment source is missing' }
+          if ($source -notmatch 'def ui_marketing_campaigns') { throw 'marketing campaign screen is missing' }
+          if ($source -notmatch 'CTkTextbox') { throw 'campaign message textbox is missing' }
+          if ($source -notmatch 'customer_name') { throw 'dynamic customer name marker is missing' }
+          if ($source -notmatch 'def add_new_customer') { throw 'new customer screen is missing' }
+          if (-not $source.Contains('tag_configure("remaining"')) { throw 'debt remaining highlight is missing' }
+          if ($source -notmatch 'def ui_accountant') { throw 'accountant UI is missing' }
+          if ($source -notmatch 'accountant_transactions') { throw 'accountant ledger schema is missing' }
+          if ($source -notmatch 'generate_accountant_pdf') { throw 'accountant PDF export is missing' }
+          if ($source -notmatch 'APP_VERSION = "V235') { throw 'source is not V235 Accountant CLIQ Card Manager build' }
+          if ($source -notmatch 'def ui_card_sales') { throw 'card sales UI is missing' }
+          if ($source -notmatch 'card_number') { throw 'card number field/schema is missing' }
+          if ($source -notmatch 'def sell_card') { throw 'card sale method is missing' }
+          if ($source -notmatch 'load_openings\(\); refresh\(\)') { throw 'accountant refresh save flow is missing' }
+          if ($source -notmatch 'UPDATE mobile_cards SET active=0') { throw 'card soft-delete flow is missing' }
+          if ($source -notmatch 'تعديل البند المحدد') { throw 'card edit button is missing' }
+          if ($source -notmatch 'skip_whatsapp_prompt') { throw 'card sale WhatsApp flow marker is missing' }
+          Write-Host 'Required files, card-sales feature markers, and Python syntax are valid.'
+
+      - name: Build Windows EXE
+        shell: powershell
+        run: |
+          $common = @('--noconfirm', '--clean', '--onefile', '--windowed', '--name', 'Trend_Center_Jordan_V235_Accountant_Balances_CLIQ_Card_Manager', '--icon', 'icon.ico', '--add-data', 'icon.ico;.', '--add-data', 'icon.png;.', '--add-data', 'cocon-next-arabic-regular.otf;.', '--add-data', 'Cocon-Next-Arabic-PDF.ttf;.')
+          if (Test-Path -LiteralPath 'brand_logos') { $common += @('--add-data', 'brand_logos;brand_logos') }
+          if (Test-Path -LiteralPath 'nav_icons') {
+            $common += @('--add-data', 'nav_icons;nav_icons')
+          } else {
+            Write-Host 'nav_icons not found; building with text-only navigation fallback.'
+          }
+          pyinstaller @common main.py
+
+      - name: Verify generated EXE
+        shell: powershell
+        run: |
+          $exe = "dist/Trend_Center_Jordan_V235_Accountant_Balances_CLIQ_Card_Manager.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "EXE was not generated: $exe" }
+          Write-Host "Generated successfully: $exe"
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trend_Center_Jordan_V235_Accountant_Balances_CLIQ_Card_Manager_EXE
+          path: dist/Trend_Center_Jordan_V235_Accountant_Balances_CLIQ_Card_Manager.exe
+          if-no-files-found: error
+          retention-days: 30
