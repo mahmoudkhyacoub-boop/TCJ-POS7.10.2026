@@ -1,0 +1,11 @@
+customtkinter
+pillow
+pywin32
+pandas
+openpyxl
+arabic-reshaper
+python-bidi
+pyautogui
+pyinstaller
+reportlab
+pymupdf
